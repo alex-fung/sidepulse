@@ -488,7 +488,12 @@ def _program_from_args(text: str | None, *, allow_implicit_stdin: bool) -> str |
     if allow_implicit_stdin:
         piped = _read_available_stdin()
         if piped is not None:
-            return normalize_led_text(piped)
+            program = normalize_led_text(piped)
+            # Nobody asked for this read, so an empty one means nothing was
+            # piped in. That is "no program given" -- which earns the usage
+            # hint -- rather than an empty program to reject.
+            if program.strip():
+                return program
     return None
 
 
