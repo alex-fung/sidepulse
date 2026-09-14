@@ -4028,6 +4028,32 @@ class AgentMonitorTests(unittest.TestCase):
             self.assertEqual(target, device / "LEDS.LED")
             self.assertEqual(target.read_text(), "off\n#FF00FF pulse")
 
+    def test_sidepulse_write_syncs_program_to_the_device(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            device = Path(tmp) / "SidePulsePro"
+            device.mkdir()
+            synced: list[int] = []
+
+            with patch("sidepulse.device_writer.os.fsync", synced.append):
+                target = write_led_program("off", device_path=device)
+
+            self.assertEqual(target.read_text(), "off")
+            # The file itself, plus the directory entry for the new file.
+            self.assertEqual(len(synced), 2)
+
+    def test_sidepulse_write_survives_a_filesystem_that_cannot_sync(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            device = Path(tmp) / "SidePulsePro"
+            device.mkdir()
+
+            def refuse(fd: int) -> None:
+                raise OSError("sync not supported")
+
+            with patch("sidepulse.device_writer.os.fsync", refuse):
+                target = write_led_program("off", device_path=device)
+
+            self.assertEqual(target.read_text(), "off")
+
     def test_sidepulse_write_uses_leds_led_even_when_old_file_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             device = Path(tmp) / "SidePulseDot"

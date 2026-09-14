@@ -60,8 +60,47 @@ def write_normalized_led_program(
         return target
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(program, encoding="utf-8")
+    write_text_synced(target, program)
     return target
+
+
+def write_text_synced(target: Path, text: str) -> None:
+    """Write text and force it to the device before returning.
+
+    Removable devices buffer writes, so the LED firmware may not see the
+    program until the data reaches the disk. Syncing is best effort: the
+    bytes are already handed to the OS once the file is closed, so a
+    filesystem that refuses to sync must not fail the write.
+    """
+
+    is_new = not path_exists(target)
+    with target.open("w", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.flush()
+        sync_fd(handle.fileno())
+
+    if is_new:
+        sync_directory(target.parent)
+
+
+def sync_fd(fd: int) -> None:
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+
+
+def sync_directory(directory: Path) -> None:
+    """Flush a new file's directory entry, where the platform supports it."""
+
+    try:
+        fd = os.open(directory, getattr(os, "O_DIRECTORY", os.O_RDONLY))
+    except OSError:
+        return
+    try:
+        sync_fd(fd)
+    finally:
+        os.close(fd)
 
 
 def normalize_led_text(text: str) -> str:
