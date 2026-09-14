@@ -452,6 +452,11 @@ By default, `Tool Running` events are not time-limited, so genuinely long tools
 remain visible. If a provider drops completion hooks and you want protection
 against stale tool starts, set `--tool-running-timeout`.
 
+Codex's `Interrupt` hook clears Working, Tool Running, and Ask when a turn is
+interrupted. The session returns to Idle / Ready without being marked completed;
+the next prompt makes it active again. Reinstall the Codex hooks after upgrading
+to register this event. Transcript monitoring is not required.
+
 `PostToolUse` means the tool returned, not that the whole turn is finished. The
 monitor keeps it as Working for a short settling window while the assistant
 writes the response, then treats it as Done if no newer hook event arrives. This

@@ -90,6 +90,7 @@ from sidepulse.lid_sleep import (
 from sidepulse.models import AgentMode, AgentStatus, AggregateStatus
 from sidepulse.origin import ProcessInfo, origin_from_processes
 from sidepulse.providers import (
+    detect_codex_config_from_text,
     detect_grok_config,
     default_log_path,
     default_state_dir,
@@ -694,6 +695,39 @@ class AgentMonitorTests(unittest.TestCase):
             )
             self.assertEqual(reloaded.snapshot().aggregate.mode, AgentMode.TOOL_RUNNING)
             self.assertEqual(reloaded.snapshot().statuses[0].origin, "Codex UI")
+
+    def test_codex_interrupt_clears_active_status_and_permissions(self) -> None:
+        for active_event in ("UserPromptSubmit", "PreToolUse", "PermissionRequest"):
+            with self.subTest(active_event=active_event), tempfile.TemporaryDirectory() as tmp:
+                latest = Path(tmp) / "latest.json"
+                monitor = LiveAgentMonitor(latest_state_path=latest)
+
+                def ingest(event_name):
+                    record = parse_log_line("codex", json.dumps({
+                        "logged_at": datetime.now(timezone.utc).isoformat(),
+                        "event": {
+                            "hook_event_name": event_name,
+                            "session_id": "interrupted-session",
+                            "turn_id": "interrupted-turn",
+                            "tool_name": "Bash",
+                            "tool_input": {"command": "sleep 100"},
+                        },
+                    }))
+                    self.assertIsNotNone(record)
+                    monitor.ingest_record(record)
+
+                ingest(active_event)
+                self.assertEqual(monitor.snapshot().aggregate.active_count, 1)
+                ingest("Interrupt")
+                self.assertEqual(monitor.snapshot().aggregate.active_count, 0)
+                self.assertEqual(monitor.pending_permissions_by_key, {})
+                status = monitor.statuses_by_key["codex:session:interrupted-session"]
+                self.assertEqual(status.mode, AgentMode.IDLE_READY)
+                self.assertEqual(status.event_name, "Interrupt")
+                reloaded = LiveAgentMonitor(latest_state_path=latest)
+                self.assertEqual(reloaded.snapshot().aggregate.active_count, 0)
+                ingest("UserPromptSubmit")
+                self.assertEqual(monitor.snapshot().aggregate.mode, AgentMode.WORKING)
 
     def test_live_sidepulse_recovers_stop_missed_during_restart(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3242,6 +3276,11 @@ class AgentMonitorTests(unittest.TestCase):
             self.assertIn("--provider codex", text)
             self.assertIn(str(log), text)
             self.assertNotIn("echo old", text)
+            self.assertIn("[[hooks.Interrupt]]", text)
+            self.assertIn("timeout = 3", text.split("[[hooks.Interrupt.hooks]]")[1])
+            self.assertIn("Interrupt", detect_codex_config_from_text(config, text).hook_events)
+            install_codex_hooks(log_path=log, config_path=config, python_executable="python3")
+            self.assertEqual(config.read_text().count("[[hooks.Interrupt]]"), 1)
 
     def test_codex_installer_refreshes_managed_hook_trust_hashes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

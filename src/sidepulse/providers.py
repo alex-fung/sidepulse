@@ -27,6 +27,7 @@ CODEX_EVENTS = (
     "SubagentStart",
     "SubagentStop",
     "Stop",
+    "Interrupt",
 )
 
 CLAUDE_EVENTS = (

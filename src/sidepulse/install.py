@@ -653,6 +653,7 @@ def codex_hook_block(
                 f"[[hooks.{event_name}.hooks]]",
                 'type = "command"',
                 f"command = '''{command}'''",
+                *(['timeout = 3'] if event_name == "Interrupt" else []),
                 "",
             ]
         )

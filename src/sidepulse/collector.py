@@ -1061,6 +1061,9 @@ def status_from_event(record: HookEvent, metadata: StatusMetadata | None = None)
 def mode_for_event(record: HookEvent) -> AgentMode | None:
     event = record.event_name
     raw = record.raw
+    if event == "Interrupt":
+        # An interrupted turn is inactive, but has not completed its work.
+        return AgentMode.IDLE_READY
     explicit_mode = explicit_mode_for_record(record)
     if explicit_mode is not None:
         return explicit_mode
@@ -1378,7 +1381,7 @@ def track_pending_permissions(
                 pending_permissions_by_key.pop(record.status_key, None)
         return
 
-    if record.event_name in {"Stop", "SessionEnd", "UserPromptSubmit"}:
+    if record.event_name in {"Stop", "Interrupt", "SessionEnd", "UserPromptSubmit"}:
         pending_permissions_by_key.pop(record.status_key, None)
 
 
