@@ -14,6 +14,7 @@ import time
 import uuid
 from pathlib import Path
 
+from . import __version__
 from .battery import (
     BatteryLedController,
     format_watts,
@@ -105,12 +106,30 @@ def sidepulse_main(argv: list[str] | None = None) -> int:
     return parsed.func(parsed)
 
 
+def add_version_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--version",
+        "-V",
+        action="version",
+        version=f"sidepulse {__version__}",
+        help="Print the installed SidePulse version and exit.",
+    )
+
+
+def cmd_version(args: argparse.Namespace) -> int:
+    print(f"sidepulse {__version__}")
+    return 0
+
+
 def build_sidepulse_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sidepulse",
         description="SidePulse command line tools.",
     )
+    add_version_argument(parser)
     subparsers = parser.add_subparsers(dest="command", required=True)
+    version = subparsers.add_parser("version", help="Print the installed SidePulse version.")
+    version.set_defaults(func=cmd_version)
     subparsers.add_parser(
         "agent-monitor",
         help="Install hooks and show live AI agent statuses.",
@@ -1088,7 +1107,11 @@ def build_parser(prog: str = "agent-monitor") -> argparse.ArgumentParser:
         prog=prog,
         description="Collect and aggregate local AI agent statuses.",
     )
+    add_version_argument(parser)
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    version = subparsers.add_parser("version", help="Print the installed SidePulse version.")
+    version.set_defaults(func=cmd_version)
 
     doctor = subparsers.add_parser("doctor", help="Show detected agent hook config.")
     doctor.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
