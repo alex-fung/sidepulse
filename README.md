@@ -37,9 +37,11 @@ uses CLI-only mode for mounted SidePulse devices and iPhone linking/push. Run
 the same command again to upgrade to the newest version.
 
 Setup also installs a headless SidePulse service. It runs through a LaunchAgent
-on macOS and a user systemd service on Linux. If a Linux session has no systemd
-user manager, setup still installs the unit and prints that it could not start;
-`sidepulse service run` remains available as a foreground fallback.
+on macOS and a user systemd service on Linux. Setup restarts the service, so an
+upgrade takes effect right away instead of leaving the previous build running.
+If a Linux session has no systemd user manager, setup still installs the unit
+and prints that it could not start; `sidepulse service run` remains available as
+a foreground fallback.
 
 ### 2. Install into your own Python environment
 

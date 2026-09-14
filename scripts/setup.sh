@@ -21,6 +21,12 @@ if ! "$PYTHON_BIN" -m venv "$VENV"; then
     printf 'On Debian or Ubuntu, install python3-venv and run this command again.\n' >&2
     exit 1
 fi
+# Stop a service still running from this venv before pip replaces the files
+# underneath it. `sidepulse setup` starts the new build again below.
+if [ -x "$VENV/bin/sidepulse" ]; then
+    "$VENV/bin/sidepulse" service stop >/dev/null 2>&1 || true
+fi
+
 "$VENV/bin/python" -m pip install --upgrade \
     "$INSTALL_SPEC"
 

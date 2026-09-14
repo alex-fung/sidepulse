@@ -247,6 +247,48 @@ class ServiceLaunchTests(unittest.TestCase):
             self.assertFalse(result.started)
             self.assertIn("unavailable", result.detail)
 
+    def test_linux_restarts_the_unit_so_upgrades_replace_the_running_service(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            completed = SimpleNamespace(returncode=0, stderr="")
+            with (
+                patch.object(Path, "home", return_value=home),
+                patch("sidepulse.service_launch.shutil.which", return_value="/usr/bin/systemctl"),
+                patch(
+                    "sidepulse.service_launch.subprocess.run",
+                    return_value=completed,
+                ) as run,
+            ):
+                result = install_systemd_user_service(start=True, dry_run=False)
+
+            self.assertTrue(result.started)
+            commands = [call.args[0] for call in run.call_args_list]
+            verbs = [command[2] for command in commands]
+            self.assertEqual(verbs, ["daemon-reload", "enable", "restart"])
+            # `enable --now` leaves an already-running unit on the old code.
+            self.assertNotIn("--now", [part for command in commands for part in command])
+
+    def test_linux_restarts_the_unit_so_upgrades_replace_the_running_service(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            completed = SimpleNamespace(returncode=0, stderr="")
+            with (
+                patch.object(Path, "home", return_value=home),
+                patch("sidepulse.service_launch.shutil.which", return_value="/usr/bin/systemctl"),
+                patch(
+                    "sidepulse.service_launch.subprocess.run",
+                    return_value=completed,
+                ) as run,
+            ):
+                result = install_systemd_user_service(start=True, dry_run=False)
+
+            self.assertTrue(result.started)
+            commands = [call.args[0] for call in run.call_args_list]
+            verbs = [command[2] for command in commands]
+            self.assertEqual(verbs, ["daemon-reload", "enable", "restart"])
+            # `enable --now` leaves an already-running unit on the old code.
+            self.assertNotIn("--now", [part for command in commands for part in command])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -121,18 +121,26 @@ def install_systemd_user_service(*, start: bool, dry_run: bool) -> ServiceInstal
             False,
             reload_result.stderr.strip() or "systemd user manager unavailable",
         )
-    result = subprocess.run(
-        [systemctl, "--user", "enable", "--now", "sidepulse.service"],
+    enable_result = subprocess.run(
+        [systemctl, "--user", "enable", "sidepulse.service"],
         check=False,
         capture_output=True,
         text=True,
     )
-    return ServiceInstallResult(
-        path,
-        changed,
-        result.returncode == 0,
-        result.stderr.strip() if result.returncode else "",
+    # Restart rather than `enable --now`. An upgrade replaces the files the
+    # running service loaded at start, and `--now` leaves an already-running
+    # unit alone, so the old code would keep driving the LEDs until the next
+    # reboot. Restart starts a stopped unit and replaces a running one.
+    result = subprocess.run(
+        [systemctl, "--user", "restart", "sidepulse.service"],
+        check=False,
+        capture_output=True,
+        text=True,
     )
+    if result.returncode == 0:
+        return ServiceInstallResult(path, changed, True, "")
+    detail = result.stderr.strip() or enable_result.stderr.strip()
+    return ServiceInstallResult(path, changed, False, detail)
 
 
 def stop_service() -> bool:
