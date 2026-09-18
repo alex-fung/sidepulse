@@ -1070,7 +1070,15 @@ def mode_for_event(record: HookEvent) -> AgentMode | None:
 
     if event in {"PostToolUseFailure", "PermissionDenied", "StopFailure"}:
         return AgentMode.BLOCKED_ERROR
-    if event in {"PermissionRequest"}:
+    if event == "PermissionRequest":
+        if record.provider == "codex":
+            # Codex fires this when it evaluates an escalation, not when it
+            # asks a human. With an approvals_reviewer configured a subagent
+            # grants most of them silently, so the event says nothing about
+            # whether the user is blocked. Ignoring it here rather than only
+            # declining to install the hook, because a running Codex app
+            # caches its hook table at launch and keeps sending the event.
+            return None
         return AgentMode.WAITING_FOR_INPUT
     if event == "Notification":
         notification_type = str(raw.get("notification_type", "")).strip().lower()

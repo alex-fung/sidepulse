@@ -697,7 +697,9 @@ class AgentMonitorTests(unittest.TestCase):
             self.assertEqual(reloaded.snapshot().statuses[0].origin, "Codex UI")
 
     def test_codex_interrupt_clears_active_status_and_permissions(self) -> None:
-        for active_event in ("UserPromptSubmit", "PreToolUse", "PermissionRequest"):
+        # PermissionRequest is absent: this fork ignores it for codex, so it
+        # never produces an active status for Interrupt to clear.
+        for active_event in ("UserPromptSubmit", "PreToolUse"):
             with self.subTest(active_event=active_event), tempfile.TemporaryDirectory() as tmp:
                 latest = Path(tmp) / "latest.json"
                 monitor = LiveAgentMonitor(latest_state_path=latest)
@@ -6904,7 +6906,7 @@ class AgentMonitorTests(unittest.TestCase):
             self.assertEqual(snapshot.statuses, ())
             self.assertEqual(snapshot.stale_statuses[0].mode, AgentMode.COMPLETED)
 
-    def test_codex_permission_request_stays_ask_during_unrelated_tool_activity(self) -> None:
+    def test_codex_permission_request_does_not_hold_ask_during_tool_activity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             log = Path(tmp) / "codex.jsonl"
             now = datetime.now(timezone.utc)
@@ -6962,8 +6964,11 @@ class AgentMonitorTests(unittest.TestCase):
             )
             snapshot = monitor.snapshot()
 
-            self.assertEqual(snapshot.aggregate.mode, AgentMode.WAITING_FOR_INPUT)
-            self.assertEqual(snapshot.statuses[0].event_name, "PermissionRequest")
+            # Upstream held Ask here until the permitted command finished.
+            # That command is a server that never returns, so the LEDs stayed
+            # amber through unrelated work. This fork ignores the event.
+            self.assertNotEqual(snapshot.aggregate.mode, AgentMode.WAITING_FOR_INPUT)
+            self.assertNotEqual(snapshot.statuses[0].event_name, "PermissionRequest")
 
     def test_codex_permission_request_clears_when_matching_tool_finishes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -7610,6 +7615,27 @@ class AgentMonitorTests(unittest.TestCase):
             snapshot = monitor.snapshot()
 
             self.assertEqual(snapshot.aggregate.mode, AgentMode.WAITING_FOR_INPUT)
+
+    def test_codex_permission_request_is_ignored(self) -> None:
+        """A running Codex app caches hooks, so the event still arrives."""
+        from datetime import datetime, timezone
+
+        from sidepulse.collector import mode_for_event
+        from sidepulse.models import HookEvent
+
+        def event(provider):
+            return HookEvent(
+                provider=provider,
+                logged_at=datetime.now(timezone.utc),
+                event_name="PermissionRequest",
+                raw={"tool_name": "Bash", "tool_input": {"command": "ls"}},
+                tool_name="Bash",
+            )
+
+        self.assertIsNone(mode_for_event(event("codex")))
+        self.assertEqual(
+            mode_for_event(event("claude")), AgentMode.WAITING_FOR_INPUT
+        )
 
     def test_codex_closing_question_maps_to_waiting_for_input(self) -> None:
         """A closing question is an ask however the agent phrased it.
