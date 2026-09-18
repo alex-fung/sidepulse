@@ -21,7 +21,11 @@ CODEX_EVENTS = (
     "UserPromptSubmit",
     "PreToolUse",
     "PostToolUse",
-    "PermissionRequest",
+    # PermissionRequest is deliberately absent. Codex fires it when it
+    # *evaluates* an escalation, including ones its approvals_reviewer grants
+    # without ever asking a human, so it does not mean the user is blocked.
+    # A local sample had 208 of 209 auto-approved. Codex signals a real
+    # handback with Stop instead.
     "PreCompact",
     "PostCompact",
     "SubagentStart",
