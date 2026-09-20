@@ -7616,6 +7616,74 @@ class AgentMonitorTests(unittest.TestCase):
 
             self.assertEqual(snapshot.aggregate.mode, AgentMode.WAITING_FOR_INPUT)
 
+    def test_finished_work_yields_to_an_agent_that_is_running(self) -> None:
+        """Amber says a turn ended and nobody has picked it up yet.
+
+        Once any agent is running again the user has evidently come back and
+        prompted something, so the finished turn is stale news and the working
+        colour should win. Amber still shows while everything else is idle.
+        """
+        from datetime import datetime, timezone
+
+        from sidepulse.collector import snapshot_from_statuses
+        from sidepulse.models import AgentStatus
+
+        now = datetime.now(timezone.utc)
+
+        def aggregate(modes):
+            statuses = [
+                AgentStatus(
+                    provider="codex",
+                    agent_id=f"agent-{index}",
+                    display_name=f"agent-{index}",
+                    mode=mode,
+                    updated_at=now,
+                    event_name="Stop",
+                )
+                for index, mode in enumerate(modes)
+            ]
+            return snapshot_from_statuses(
+                statuses,
+                sources=(),
+                collected_at=now,
+                stale_after_seconds=3600,
+                tool_running_timeout_seconds=0,
+                completed_visible_seconds=3600,
+                idle_visible_seconds=3600,
+            ).aggregate.mode
+
+        # Nothing else running: the finished turn is the news.
+        self.assertEqual(aggregate([AgentMode.COMPLETED]), AgentMode.COMPLETED)
+        self.assertEqual(
+            aggregate([AgentMode.COMPLETED, AgentMode.IDLE_READY]),
+            AgentMode.COMPLETED,
+        )
+
+        # Something is running again: the finished turn is stale.
+        for running in (
+            AgentMode.WORKING,
+            AgentMode.TOOL_RUNNING,
+            AgentMode.LONG_TASK_PROGRESS,
+        ):
+            with self.subTest(running=running.value):
+                self.assertEqual(
+                    aggregate([AgentMode.COMPLETED, running]), running
+                )
+
+    def test_prompting_a_finished_agent_moves_it_off_completed(self) -> None:
+        from datetime import datetime, timezone
+
+        from sidepulse.collector import mode_for_event
+        from sidepulse.models import HookEvent
+
+        record = HookEvent(
+            provider="codex",
+            logged_at=datetime.now(timezone.utc),
+            event_name="UserPromptSubmit",
+            raw={},
+        )
+        self.assertEqual(mode_for_event(record), AgentMode.WORKING)
+
     def test_waiting_for_input_outranks_every_other_mode(self) -> None:
         """Red is the one state that means a person is blocked."""
         from datetime import datetime, timezone
