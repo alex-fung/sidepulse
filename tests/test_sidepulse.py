@@ -7616,6 +7616,52 @@ class AgentMonitorTests(unittest.TestCase):
 
             self.assertEqual(snapshot.aggregate.mode, AgentMode.WAITING_FOR_INPUT)
 
+    def test_waiting_for_input_outranks_every_other_mode(self) -> None:
+        """Red is the one state that means a person is blocked."""
+        from datetime import datetime, timezone
+
+        from sidepulse.collector import snapshot_from_statuses
+        from sidepulse.models import AgentStatus
+
+        now = datetime.now(timezone.utc)
+
+        def status(mode, name):
+            return AgentStatus(
+                provider="codex",
+                agent_id=name,
+                display_name=name,
+                mode=mode,
+                updated_at=now,
+                event_name="Stop",
+            )
+
+        others = [
+            AgentMode.BLOCKED_ERROR,
+            AgentMode.COMPLETED,
+            AgentMode.WORKING,
+            AgentMode.TOOL_RUNNING,
+            AgentMode.LONG_TASK_PROGRESS,
+            AgentMode.IDLE_READY,
+        ]
+        for other in others:
+            for order in (
+                [AgentMode.WAITING_FOR_INPUT, other],
+                [other, AgentMode.WAITING_FOR_INPUT],
+            ):
+                with self.subTest(other=other.value, first=order[0].value):
+                    snapshot = snapshot_from_statuses(
+                        [status(m, f"agent-{i}") for i, m in enumerate(order)],
+                        sources=(),
+                        collected_at=now,
+                        stale_after_seconds=3600,
+                        tool_running_timeout_seconds=0,
+                        completed_visible_seconds=3600,
+                        idle_visible_seconds=3600,
+                    )
+                    self.assertEqual(
+                        snapshot.aggregate.mode, AgentMode.WAITING_FOR_INPUT
+                    )
+
     def test_codex_permission_request_is_ignored(self) -> None:
         """A running Codex app caches hooks, so the event still arrives."""
         from datetime import datetime, timezone

@@ -17,9 +17,12 @@ class AgentMode(str, Enum):
     UNKNOWN = "unknown"
 
 
+# A person waiting outranks an agent erroring. An agent that hit a failed tool
+# call is usually still working through it, and if its state wins the aggregate
+# it hides another session that genuinely needs attention.
 MODE_PRIORITY: dict[AgentMode, int] = {
-    AgentMode.BLOCKED_ERROR: 1,
-    AgentMode.WAITING_FOR_INPUT: 2,
+    AgentMode.WAITING_FOR_INPUT: 1,
+    AgentMode.BLOCKED_ERROR: 2,
     AgentMode.TOOL_RUNNING: 3,
     AgentMode.LONG_TASK_PROGRESS: 4,
     AgentMode.WORKING: 5,
