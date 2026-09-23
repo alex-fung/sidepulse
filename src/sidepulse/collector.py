@@ -33,6 +33,11 @@ TRANSCRIPT_FILE_LIST_CACHE_SECONDS = 5.0
 CLAUDE_TRANSCRIPT_MTIME_HEARTBEAT_SKEW_SECONDS = 30.0
 CODEX_SESSION_INDEX_MAX_LINES = 5000
 COMPLETED_VISIBLE_SECONDS = 20 * 60.0
+# A question stays open until somebody answers it, so waiting is exempt from
+# the general staleness window - an hour-old question is still unanswered.
+# The cap exists only so a session that died mid-question stops holding the
+# light forever; it should outlast any normal gap away from the desk.
+WAITING_VISIBLE_SECONDS = 8 * 60 * 60.0
 IDLE_VISIBLE_SECONDS = 0.0
 POST_TOOL_WORKING_VISIBLE_SECONDS = 2 * 60.0
 
@@ -361,6 +366,8 @@ class AgentMonitor:
             return age > self.completed_visible_seconds
         if status.mode == AgentMode.IDLE_READY and self.idle_visible_seconds >= 0:
             return age > self.idle_visible_seconds
+        if status.mode == AgentMode.WAITING_FOR_INPUT:
+            return age > max(self.stale_after_seconds, WAITING_VISIBLE_SECONDS)
         return (
             age > self.stale_after_seconds
             or self.is_expired_tool_running(status, now)
@@ -1306,6 +1313,8 @@ def status_is_stale(
         return age > completed_visible_seconds
     if status.mode == AgentMode.IDLE_READY and idle_visible_seconds >= 0:
         return age > idle_visible_seconds
+    if status.mode == AgentMode.WAITING_FOR_INPUT:
+        return age > max(stale_after_seconds, WAITING_VISIBLE_SECONDS)
     return (
         age > stale_after_seconds
         or (

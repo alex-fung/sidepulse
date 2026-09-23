@@ -7731,6 +7731,78 @@ class AgentMonitorTests(unittest.TestCase):
         self.assertNotIn("asking:", describe_status(status(AgentMode.WORKING), now))
         self.assertNotIn("asking:", describe_status(status(AgentMode.COMPLETED), now))
 
+    def test_an_unanswered_question_outlives_the_general_stale_window(self) -> None:
+        """Red went dark after an hour while the agent was still blocked.
+
+        waiting_for_input shared stale_after_seconds with tool_running, where
+        an hour-old entry really is dead. A question is not: it stays open
+        until somebody answers it. Walking away for lunch turned the light
+        green with agents still waiting.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from sidepulse.collector import (
+            WAITING_VISIBLE_SECONDS,
+            snapshot_from_statuses,
+            status_is_stale,
+        )
+        from sidepulse.models import AgentStatus
+
+        now = datetime.now(timezone.utc)
+
+        def status(mode, age_seconds):
+            return AgentStatus(
+                provider="claude",
+                agent_id="agent",
+                display_name="agent",
+                mode=mode,
+                updated_at=now - timedelta(seconds=age_seconds),
+                event_name="Stop",
+            )
+
+        def stale(mode, age_seconds):
+            return status_is_stale(
+                status(mode, age_seconds),
+                now,
+                stale_after_seconds=3600.0,
+                tool_running_timeout_seconds=0.0,
+                completed_visible_seconds=1200.0,
+                idle_visible_seconds=0.0,
+            )
+
+        W = AgentMode.WAITING_FOR_INPUT
+        self.assertFalse(stale(W, 70 * 60))        # the case that regressed
+        self.assertFalse(stale(W, WAITING_VISIBLE_SECONDS - 60))
+        self.assertTrue(stale(W, WAITING_VISIBLE_SECONDS + 60))
+
+        # The window is a floor. A caller asking for a longer one keeps it.
+        self.assertFalse(
+            status_is_stale(
+                status(W, WAITING_VISIBLE_SECONDS + 60),
+                now,
+                stale_after_seconds=WAITING_VISIBLE_SECONDS * 10,
+                tool_running_timeout_seconds=0.0,
+                completed_visible_seconds=1200.0,
+                idle_visible_seconds=0.0,
+            )
+        )
+
+        # Other modes keep the general window.
+        self.assertTrue(stale(AgentMode.WORKING, 70 * 60))
+        self.assertTrue(stale(AgentMode.TOOL_RUNNING, 70 * 60))
+
+        # And the aggregate still reports it, an hour later.
+        snapshot = snapshot_from_statuses(
+            [status(W, 70 * 60)],
+            sources=(),
+            collected_at=now,
+            stale_after_seconds=3600.0,
+            tool_running_timeout_seconds=0.0,
+            completed_visible_seconds=1200.0,
+            idle_visible_seconds=0.0,
+        )
+        self.assertEqual(snapshot.aggregate.mode, AgentMode.WAITING_FOR_INPUT)
+
     def test_waiting_for_input_outranks_every_other_mode(self) -> None:
         """Red is the one state that means a person is blocked."""
         from datetime import datetime, timezone
