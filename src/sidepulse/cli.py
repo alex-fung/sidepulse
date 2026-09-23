@@ -22,7 +22,7 @@ from .battery import (
     read_battery_snapshot,
     render_battery_snapshot,
 )
-from .collector import AgentMonitor, SourceSpec, default_sources
+from .collector import AgentMonitor, SourceSpec, default_sources, closing_line
 from .device_writer import (
     DEFAULT_FILE_NAME,
     DeviceWriteError,
@@ -70,7 +70,7 @@ from .lid_sleep import (
     sleep_helper_installed,
     uninstall_sleep_helper,
 )
-from .models import AgentStatus
+from .models import AgentMode, AgentStatus
 from .providers import (
     HOOK_PROVIDERS,
     detect_log_path,
@@ -1563,10 +1563,15 @@ def describe_status(status: AgentStatus, now) -> str:
     origin = f" origin={status.origin}" if status.origin else ""
     tool = f" tool={status.tool_name}" if status.tool_name else ""
     cwd = f" cwd={status.cwd}" if status.cwd else ""
-    return (
+    line = (
         f"{status.display_name}: {status.mode_label}"
         f" event={status.event_name}{origin}{tool} age={age}s{stale}{cwd}"
     )
+    if status.mode == AgentMode.WAITING_FOR_INPUT:
+        ask = closing_line(status.message)
+        if ask:
+            line += f"\n    asking: {ask[:220]}"
+    return line
 
 
 def render_led_sync_result(result: LedStatusWrite, snapshot, dry_run: bool = False) -> str:

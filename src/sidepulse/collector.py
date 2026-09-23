@@ -1744,6 +1744,23 @@ def _assistant_final_line_blocks(line: str) -> bool:
     return lowered.startswith(BLOCKING_STATEMENT_PREFIXES)
 
 
+def closing_line(message: object) -> str | None:
+    """The last line of a turn that is not a recap or progress marker.
+
+    For a turn that handed control back, this is the sentence that says what
+    is wanted. Showing it is the difference between "a session needs you" and
+    knowing which one and why.
+    """
+    if not isinstance(message, str):
+        return None
+    text = strip_markdown_inline_code(strip_markdown_code_blocks(message))
+    for line in reversed([line.strip() for line in text.splitlines() if line.strip()]):
+        if _assistant_status_line(line):
+            continue
+        return line
+    return None
+
+
 def _assistant_status_line(line: str) -> bool:
     text = line.strip().lower()
     return text.startswith(

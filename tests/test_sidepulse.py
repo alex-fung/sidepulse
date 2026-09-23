@@ -7684,6 +7684,53 @@ class AgentMonitorTests(unittest.TestCase):
         )
         self.assertEqual(mode_for_event(record), AgentMode.WORKING)
 
+    def test_status_output_shows_what_a_waiting_agent_is_asking(self) -> None:
+        """Knowing a session is red is useless without knowing which and why.
+
+        These sessions are named after the prompt they were given, which for a
+        worktree agent is boilerplate, so the name alone identifies nothing.
+        """
+        from datetime import datetime, timezone
+
+        from sidepulse.cli import describe_status
+        from sidepulse.collector import closing_line
+        from sidepulse.models import AgentStatus
+
+        now = datetime.now(timezone.utc)
+        message = "\n".join(
+            [
+                "I looked at both options.",
+                "Want me to build a prototype harness for the Slack tasks?",
+                "* Cogitated for 40s",
+            ]
+        )
+        self.assertEqual(
+            closing_line(message),
+            "Want me to build a prototype harness for the Slack tasks?",
+        )
+        self.assertIsNone(closing_line(None))
+        self.assertIsNone(closing_line(""))
+
+        def status(mode):
+            return AgentStatus(
+                provider="claude",
+                agent_id="agent",
+                display_name="worktree-abc: You are operating in a git worktree...",
+                mode=mode,
+                updated_at=now,
+                event_name="Stop",
+                message=message,
+            )
+
+        waiting = describe_status(status(AgentMode.WAITING_FOR_INPUT), now)
+        self.assertIn(
+            "asking: Want me to build a prototype harness", waiting
+        )
+
+        # Only a turn that handed back control carries an ask.
+        self.assertNotIn("asking:", describe_status(status(AgentMode.WORKING), now))
+        self.assertNotIn("asking:", describe_status(status(AgentMode.COMPLETED), now))
+
     def test_waiting_for_input_outranks_every_other_mode(self) -> None:
         """Red is the one state that means a person is blocked."""
         from datetime import datetime, timezone
