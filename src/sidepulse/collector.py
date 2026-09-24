@@ -1107,11 +1107,14 @@ def mode_for_event(record: HookEvent) -> AgentMode | None:
         return AgentMode.WORKING
     if event in {"UserPromptSubmit", "PreCompact", "PostCompact", "SubagentStart"}:
         return AgentMode.WORKING
-    if event in {"Stop", "SubagentStop"}:
-        if _assistant_message_asks_question(
-            raw.get("last_assistant_message"),
-            trust_final_line=event == "Stop",
-        ):
+    if event == "SubagentStop":
+        # last_assistant_message holds the prompt handed to the subagent, not
+        # its reply, so a question in it is the user's own words being read
+        # back. A subagent finishing also leaves the parent still working, so
+        # it is never the moment control returns to a person.
+        return AgentMode.COMPLETED
+    if event == "Stop":
+        if _assistant_message_asks_question(raw.get("last_assistant_message")):
             return AgentMode.WAITING_FOR_INPUT
         return AgentMode.COMPLETED
     if event in {"SessionEnd"}:
@@ -1692,17 +1695,11 @@ def _tool_response_looks_failed(response: object) -> bool:
     return False
 
 
-def _assistant_message_asks_question(
-    message: object,
-    *,
-    trust_final_line: bool = False,
-) -> bool:
+def _assistant_message_asks_question(message: object) -> bool:
     """Decide whether a finished turn is handing control back to the user.
 
-    trust_final_line applies only to a real Stop. On SubagentStop the field
-    carries the prompt handed to the subagent rather than its reply, so a
-    question there says nothing about whether the user is blocked - and a
-    subagent finishing leaves the parent agent still working either way.
+    Only ever asked about a real Stop; see mode_for_event for why a
+    SubagentStop cannot answer this question.
     """
     if not isinstance(message, str):
         return False
@@ -1718,7 +1715,7 @@ def _assistant_message_asks_question(
             continue
         if final_content_line:
             final_content_line = False
-            if trust_final_line and _assistant_final_line_blocks(line):
+            if _assistant_final_line_blocks(line):
                 return True
         if _assistant_line_asks_question(line):
             return True

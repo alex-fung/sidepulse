@@ -7946,7 +7946,12 @@ class AgentMonitorTests(unittest.TestCase):
                         "logged_at": "2026-06-20T06:00:00Z",
                         "hook_event_name": "SubagentStop",
                         "session_id": "claude-session",
-                        "last_assistant_message": "did the claude review pass?",
+                        # Starts with an allow-listed prefix and ends in a
+                        # question mark, so the phrasing rule matched it. It is
+                        # the user's own prompt to the subagent.
+                        "last_assistant_message": (
+                            "what did Sihan say about responsible AI?"
+                        ),
                     }
                 )
                 + "\n"
@@ -7959,6 +7964,32 @@ class AgentMonitorTests(unittest.TestCase):
             self.assertNotEqual(
                 monitor.snapshot().aggregate.mode, AgentMode.WAITING_FOR_INPUT
             )
+
+            # No wording of a subagent prompt may turn the light red.
+            from datetime import datetime, timezone
+
+            from sidepulse.collector import mode_for_event
+            from sidepulse.models import HookEvent
+
+            for text in (
+                "what did Sihan say about responsible AI?",
+                "which branch should we ship?",
+                "how do we handle the migration?",
+                "Want me to push?",
+                "What I need from you: a decision.",
+            ):
+                with self.subTest(text=text[:28]):
+                    self.assertEqual(
+                        mode_for_event(
+                            HookEvent(
+                                provider="claude",
+                                logged_at=datetime.now(timezone.utc),
+                                event_name="SubagentStop",
+                                raw={"last_assistant_message": text},
+                            )
+                        ),
+                        AgentMode.COMPLETED,
+                    )
 
     def test_question_examples_in_inline_code_do_not_map_to_waiting_for_input(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
